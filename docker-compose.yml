@@ -1,0 +1,30 @@
+version: "3.6"
+
+services:
+  db:
+    image: postgres:alpine
+    restart: always
+    volumes:
+      - "data:/var/lib/postgresql/data"
+    networks:
+      - friends_management
+
+  app:
+    build: .
+    command: sh -c "go run *.go" 
+    volumes:
+      - "./:/app"
+    ports:
+      - "3000:3000"
+    networks:
+      - friends_management
+    depends_on:
+      - db
+
+volumes:
+  data:
+
+networks:
+  friends_management:
+    driver: "bridge"
+
