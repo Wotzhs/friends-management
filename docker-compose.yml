@@ -11,9 +11,9 @@ services:
 
   app:
     build: .
-    command: sh -c "go run *.go" 
+    command: sh -c "go run *.go"
     volumes:
-      - "./:/app"
+      - "./:/go/src/app"
     ports:
       - "3000:3000"
     networks:
