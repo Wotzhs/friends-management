@@ -3,29 +3,42 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/julienschmidt/httprouter"
 )
 
-var mux *http.ServeMux
+var router *httprouter.Router
+var jsonRes []byte
+
+type apiResponse struct {
+	Success bool   `json:"success"`
+	Errors  string `json:"errors,omitempty"`
+}
 
 func init() {
-	mux = http.NewServeMux()
-	mux.HandleFunc("/", helloWorld)
-	mux.HandleFunc("/api/", helloWorldApi)
+	router = httprouter.New()
+	router.POST("/api/friends", CreateFriendsHandler)
 }
 
-func helloWorld(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("hello world"))
-}
-
-type helloWorldType struct {
-	Message string `json:"message"`
-	Success bool   `json:"success"`
-}
-
-func helloWorldApi(w http.ResponseWriter, r *http.Request) {
-	res, err := json.Marshal(helloWorldType{"hello world", true})
-	if err != nil {
-		w.Write([]byte("error in json marshal"))
+func CreateFriendsHandler(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+	if err := r.ParseForm(); err != nil {
+		jsonRes, _ = json.Marshal(&apiResponse{Success: false, Errors: err.Error()})
+		w.Write(jsonRes)
+		return
 	}
-	w.Write(res)
+
+	users := []string{}
+
+	if err := json.Unmarshal([]byte(r.FormValue("friends")), &users); err != nil {
+		w.Write([]byte(`{"status": false}`))
+	}
+
+	if err := createFriends(users); err != nil {
+		jsonRes, _ = json.Marshal(&apiResponse{Success: false, Errors: err.Error()})
+		w.Write(jsonRes)
+		return
+	}
+
+	jsonRes, _ = json.Marshal(&apiResponse{Success: true})
+	w.Write(jsonRes)
 }
