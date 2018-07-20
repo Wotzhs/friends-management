@@ -6,12 +6,28 @@ services:
     restart: always
     volumes:
       - "data:/var/lib/postgresql/data"
+    environment:
+      POSTGRES_DB: friends_management
+    networks:
+      - friends_management
+    ports:
+      - "5433:5432"
+
+  migration:
+    build: .
+    command: sh -c "./wait-for db:5432 -- sh migration.sh"
+    volumes:
+      - "./migrations:/go/src/app/migrations"
+      - "./:/go/src/app"
+    depends_on:
+      - db
     networks:
       - friends_management
 
   app:
     build: .
-    command: sh -c "go run *.go"
+    command: sh start.sh
+    # entrypoint: /bin/sh
     volumes:
       - "./:/go/src/app"
     ports:
@@ -19,6 +35,7 @@ services:
     networks:
       - friends_management
     depends_on:
+      - migration
       - db
 
 volumes:
