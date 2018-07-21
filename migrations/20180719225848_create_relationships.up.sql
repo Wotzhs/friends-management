@@ -1,5 +1,5 @@
 CREATE TABLE relationships (
-	id uuid primary key,
+	id serial primary key,
 	requestor varchar unique not null,
 	target varchar unique not null,
 	status varchar not null,
