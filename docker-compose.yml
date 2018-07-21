@@ -5,6 +5,7 @@ services:
     image: postgres:alpine
     restart: always
     volumes:
+      - "./scripts/testdb_init.sql:/docker-entrypoint-initdb.d/testdb_init.sql"
       - "data:/var/lib/postgresql/data"
     environment:
       POSTGRES_DB: friends_management
@@ -15,10 +16,10 @@ services:
 
   migration:
     build: .
-    command: sh -c "sh wait-for db:5432 -- sh scripts/migration.sh"
+    command: sh -c "sh ../wait-for db:5432 -- sh scripts/migration.sh"
     volumes:
       - "./migrations:/go/src/app/migrations"
-      - "./scripts:/go/src/app/scripts"
+      - "./scripts/migration.sh:/go/src/app/scripts/migration.sh"
     depends_on:
       - db
     networks:
@@ -27,7 +28,6 @@ services:
   app:
     build: .
     command: sh scripts/start.sh
-    # entrypoint: /bin/sh
     volumes:
       - "./:/go/src/app"
     ports:
@@ -37,6 +37,18 @@ services:
     depends_on:
       - migration
       - db
+
+  test:
+    build: .
+    command: sh -c "sh ../wait-for db:5432 -- sh scripts/test.sh"
+    volumes:
+      - "./:/go/src/app"
+    networks:
+      - friends_management
+    depends_on:
+      - db
+    environment:
+      GO_ENV: test
 
 volumes:
   data:
