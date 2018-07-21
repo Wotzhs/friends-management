@@ -16,7 +16,7 @@ RUN go get -u -v github.com/golang-migrate/migrate
 
 RUN go get -u -v github.com/julienschmidt/httprouter
 
-RUN curl -o wait-for https://raw.githubusercontent.com/eficode/wait-for/master/wait-for
+RUN curl -o ../wait-for https://raw.githubusercontent.com/eficode/wait-for/master/wait-for
 
 RUN wait
 
