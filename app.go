@@ -8,7 +8,7 @@ import (
 func main() {
 	server := &http.Server{
 		Addr:    ":3000",
-		Handler: mux,
+		Handler: router,
 	}
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatal(err)
