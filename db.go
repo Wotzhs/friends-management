@@ -23,7 +23,7 @@ func init() {
 		log.Fatalf("error in db connection info %+v", err)
 	}
 	if err := dbconn.Ping(); err != nil {
-		log.Fatal("error in pinging db %+v", err)
+		log.Fatalf("error in pinging db %+v", err)
 	}
 	db = dbconn
 }
