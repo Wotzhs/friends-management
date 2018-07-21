@@ -15,10 +15,10 @@ services:
 
   migration:
     build: .
-    command: sh -c "./wait-for db:5432 -- sh migration.sh"
+    command: sh -c "sh wait-for db:5432 -- sh scripts/migration.sh"
     volumes:
       - "./migrations:/go/src/app/migrations"
-      - "./:/go/src/app"
+      - "./scripts:/go/src/app/scripts"
     depends_on:
       - db
     networks:
@@ -26,7 +26,7 @@ services:
 
   app:
     build: .
-    command: sh start.sh
+    command: sh scripts/start.sh
     # entrypoint: /bin/sh
     volumes:
       - "./:/go/src/app"
