@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -24,6 +25,12 @@ type relationships []relationship
 func createFriends(users []string) error {
 	if len(users) != 2 {
 		return errors.New("incorrect number of friends")
+	}
+
+	for _, users := range users {
+		if !isEmailValid(users) {
+			return errors.New("invalid email being submitted")
+		}
 	}
 
 	if users[0] == users[1] {
@@ -109,9 +116,15 @@ func isFriend(relationships relationships) (bool, string) {
 	isFriend := false
 	for _, relationship := range relationships {
 		if relationship.status == relationshipIsFriend {
-			messages = append(messages, relationship.requestor+" is already a friend of  "+relationship.target)
+			messages = append(messages, relationship.requestor+" is already a friend of "+relationship.target)
 			isFriend = true
 		}
 	}
 	return isFriend, strings.Join(messages, ",")
+}
+
+func isEmailValid(email string) bool {
+	// credit: http://www.golangprograms.com/golang-package-examples/regular-expression-to-validate-email-address.html
+	re := regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
+	return re.MatchString(email)
 }
