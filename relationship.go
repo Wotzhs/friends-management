@@ -67,6 +67,45 @@ func createFriends(users []string) error {
 	return nil
 }
 
+func getFriendsList(user string) (friends []string, count int, err error) {
+	if !isEmailValid(user) {
+		err = errors.New("invalid user")
+		return
+	}
+
+	query := `
+		SELECT requestor_relationships.target target FROM relationships requestor_relationships
+		LEFT JOIN relationships target_relationships ON requestor_relationships.target = target_relationships.requestor
+		WHERE requestor_relationships.requestor=$1 AND target_relationships.target=$1
+		AND requestor_relationships.status=$2 AND target_relationships.status = $2
+	`
+
+	rows, err := db.Query(query, user, relationshipIsFriend)
+	if err != nil {
+		err = errors.New(fmt.Sprintf("failed to check if user %v has any friends err %v", user, err))
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		row := relationship{}
+		err = rows.Scan(&row.target)
+		if err != nil {
+			return
+		}
+		friends = append(friends, row.target)
+	}
+
+	count = len(friends)
+
+	if count == 0 {
+		err = errors.New("user doesn't have any friends")
+		return
+	}
+
+	return
+}
+
 func ifExistsRelationship(users []string) (exists bool, relationships relationships, err error) {
 	statusQuery := `
 		SELECT requestor, target, status FROM relationships 
