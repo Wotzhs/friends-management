@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"log"
+	"os"
 
 	_ "github.com/lib/pq"
 )
@@ -10,7 +11,13 @@ import (
 var db *sql.DB
 
 func init() {
-	conninfo := "user=postgres host=db dbname=friends_management sslmode=disable"
+	dbname := "friends_management"
+
+	if os.Getenv("GO_ENV") == "test" {
+		dbname += "_test"
+	}
+
+	conninfo := "user=postgres host=db sslmode=disable dbname=" + dbname
 	dbconn, err := sql.Open("postgres", conninfo)
 	if err != nil {
 		log.Fatalf("error in db connection info %+v", err)
