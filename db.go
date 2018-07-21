@@ -10,7 +10,7 @@ import (
 var db *sql.DB
 
 func init() {
-	conninfo := "user=postgres host=db sslmode=disable"
+	conninfo := "user=postgres host=db dbname=friends_management sslmode=disable"
 	dbconn, err := sql.Open("postgres", conninfo)
 	if err != nil {
 		log.Fatalf("error in db connection info %+v", err)
