@@ -11,8 +11,8 @@ var router *httprouter.Router
 var jsonRes []byte
 
 type apiResponse struct {
-	Status bool  `json:"status"`
-	Errors error `json:"errors,omitempty"`
+	Success bool  `json:"success"`
+	Errors  error `json:"errors,omitempty"`
 }
 
 func init() {
@@ -22,7 +22,7 @@ func init() {
 
 func CreateFriendsHandler(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 	if err := r.ParseForm(); err != nil {
-		jsonRes, _ = json.Marshal(&apiResponse{Status: false, Errors: err})
+		jsonRes, _ = json.Marshal(&apiResponse{Success: false, Errors: err})
 		w.Write(jsonRes)
 	}
 
@@ -33,10 +33,10 @@ func CreateFriendsHandler(w http.ResponseWriter, r *http.Request, p httprouter.P
 	}
 
 	if err := createFriends(users); err != nil {
-		jsonRes, _ = json.Marshal(&apiResponse{Status: false, Errors: err})
+		jsonRes, _ = json.Marshal(&apiResponse{Success: false, Errors: err})
 		w.Write(jsonRes)
 	}
 
-	jsonRes, _ = json.Marshal(&apiResponse{Status: true})
+	jsonRes, _ = json.Marshal(&apiResponse{Success: true})
 	w.Write(jsonRes)
 }
