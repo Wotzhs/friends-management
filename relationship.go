@@ -8,17 +8,17 @@ import (
 	"time"
 )
 
-type relationship struct {
-	requestor string
-	target    string
-	status    string
-}
-
 const (
 	relationshipIsFriend     = "friend"
 	relationshipIsBlocked    = "blocked"
 	relationshipIsSubscribed = "subscribed"
 )
+
+type relationship struct {
+	Requestor string
+	Target    string
+	Status    string
+}
 
 type relationships []relationship
 
@@ -47,6 +47,9 @@ func createFriends(users []string) error {
 			return errors.New(message)
 		}
 		if isFriend, message := isFriend(relationships); isFriend {
+			return errors.New(message)
+		}
+		if isSubscribed, message := isSubscribed(relationships); isSubscribed {
 			return errors.New(message)
 		}
 	}
@@ -89,11 +92,11 @@ func getFriendsList(user string) (friends []string, count int, err error) {
 
 	for rows.Next() {
 		row := relationship{}
-		err = rows.Scan(&row.target)
+		err = rows.Scan(&row.Target)
 		if err != nil {
 			return
 		}
-		friends = append(friends, row.target)
+		friends = append(friends, row.Target)
 	}
 
 	count = len(friends)
@@ -167,11 +170,11 @@ func getCommonFriendsList(users []string) (friends []string, count int, err erro
 
 	for rows.Next() {
 		row := relationship{}
-		err = rows.Scan(&row.target)
+		err = rows.Scan(&row.Target)
 		if err != nil {
 			return
 		}
-		friends = append(friends, row.target)
+		friends = append(friends, row.Target)
 	}
 
 	count = len(friends)
@@ -182,6 +185,37 @@ func getCommonFriendsList(users []string) (friends []string, count int, err erro
 	}
 
 	return
+}
+
+func subscribeUpdates(requestor, target string) error {
+	users := []string{requestor, target}
+	exists, relationships, err := ifExistsRelationship(users)
+	if err != nil {
+		return err
+	}
+
+	if exists {
+		if isBlocked, message := isBlocked(relationships); isBlocked {
+			return errors.New(message)
+		}
+		if isFriend, message := isFriend(relationships); isFriend {
+			return errors.New(message)
+		}
+		if isSubscribed, message := isSubscribed(relationships); isSubscribed {
+			return errors.New(message)
+		}
+	}
+
+	subscribeQuery := `
+		INSERT INTO relationships (requestor, target, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5)
+	`
+	now := time.Now()
+	if _, err := db.Exec(subscribeQuery, requestor, target, relationshipIsSubscribed, now, now); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func ifExistsRelationship(users []string) (exists bool, relationships relationships, err error) {
@@ -201,7 +235,7 @@ func ifExistsRelationship(users []string) (exists bool, relationships relationsh
 
 	for rows.Next() {
 		row := relationship{}
-		err = rows.Scan(&row.requestor, &row.target, &row.status)
+		err = rows.Scan(&row.Requestor, &row.Target, &row.Status)
 		if err != nil {
 			return
 		}
@@ -220,8 +254,8 @@ func isBlocked(relationships relationships) (bool, string) {
 	messages := []string{}
 	isBlocked := false
 	for _, relationship := range relationships {
-		if relationship.status == relationshipIsBlocked {
-			messages = append(messages, relationship.requestor+" has blocked "+relationship.target)
+		if relationship.Status == relationshipIsBlocked {
+			messages = append(messages, relationship.Requestor+" has blocked "+relationship.Target)
 			isBlocked = true
 		}
 	}
@@ -232,8 +266,20 @@ func isFriend(relationships relationships) (bool, string) {
 	messages := []string{}
 	isFriend := false
 	for _, relationship := range relationships {
-		if relationship.status == relationshipIsFriend {
-			messages = append(messages, relationship.requestor+" is already a friend of "+relationship.target)
+		if relationship.Status == relationshipIsFriend {
+			messages = append(messages, relationship.Requestor+" is already a friend of "+relationship.Target)
+			isFriend = true
+		}
+	}
+	return isFriend, strings.Join(messages, ",")
+}
+
+func isSubscribed(relationships relationships) (bool, string) {
+	messages := []string{}
+	isFriend := false
+	for _, relationship := range relationships {
+		if relationship.Status == relationshipIsSubscribed {
+			messages = append(messages, relationship.Requestor+" has already subscribed to "+relationship.Target)
 			isFriend = true
 		}
 	}
