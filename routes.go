@@ -22,10 +22,10 @@ func init() {
 	router = httprouter.New()
 	router.POST("/api/friends", createFriendsHandler)
 	router.GET("/api/friends", getFriendsListHandler)
-
+	router.GET("/api/friends/common", getCommonFriendsListHandler)
 }
 
-func createFriendsHandler(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+func createFriendsHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	if err := r.ParseForm(); err != nil {
 		jsonRes, _ = json.Marshal(&apiResponse{Success: false, Errors: err.Error()})
 		w.Write(jsonRes)
@@ -72,6 +72,33 @@ func getFriendsListHandler(w http.ResponseWriter, r *http.Request, _ httprouter.
 	}
 
 	friendsList, count, err := getFriendsList(a.Email)
+	if err != nil {
+		jsonRes, _ = json.Marshal(&apiResponse{Success: false, Errors: err.Error(), Friends: friendsList, Count: count})
+		w.Write(jsonRes)
+		return
+	}
+
+	jsonRes, _ = json.Marshal(&apiResponse{Success: true, Errors: "", Friends: friendsList, Count: count})
+	w.Write(jsonRes)
+}
+
+func getCommonFriendsListHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	bodyBytes, _ := ioutil.ReadAll(r.Body)
+	users := struct {
+		Friends []string
+	}{}
+	if err := json.Unmarshal(bodyBytes, &users); err != nil {
+		jsonRes, _ = json.Marshal(&apiResponse{Success: false, Errors: err.Error()})
+		w.Write(jsonRes)
+		return
+	}
+	if len(users.Friends) == 0 {
+		jsonRes, _ = json.Marshal(&apiResponse{Success: false, Errors: "no users were provided"})
+		w.Write(jsonRes)
+		return
+	}
+
+	friendsList, count, err := getCommonFriendsList(users.Friends)
 	if err != nil {
 		jsonRes, _ = json.Marshal(&apiResponse{Success: false, Errors: err.Error(), Friends: friendsList, Count: count})
 		w.Write(jsonRes)
