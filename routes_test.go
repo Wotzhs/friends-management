@@ -375,6 +375,7 @@ func TestSubScribeUpdates(t *testing.T) {
 		})
 	}
 
+	// subscribe updates
 	for _, testCase := range testCases {
 		req, err := http.NewRequest("POST", baseAPI+"/friends/subscribe", strings.NewReader(testCase.stringRequestBody))
 		if err != nil {
@@ -400,6 +401,223 @@ func TestSubScribeUpdates(t *testing.T) {
 		}
 	}
 
+	// ensure no friends are created
+	testUsers := []map[string]interface{}{
+		{"email": "lisa@example.com", "friends": []string{}, "count": 0},
+		{"email": "john@example.com", "friends": []string{}, "count": 0},
+	}
+
+	testCases = []testStruct{}
+	for _, testUser := range testUsers {
+		user := user{testUser["email"].(string)}
+		jsonTestUser, err := json.Marshal(user)
+		if err != nil {
+			t.Error(err)
+		}
+		testCases = append(testCases, testStruct{
+			stringRequestBody: string(jsonTestUser),
+			expectedResult: expectedResult{
+				Success: testUser["count"].(int) > 0,
+				Friends: testUser["friends"].([]string),
+				Count:   testUser["count"].(int),
+			},
+		})
+	}
+
+	for _, testCase := range testCases {
+		req, err := http.NewRequest("GET", baseAPI+"/friends", strings.NewReader(testCase.stringRequestBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if res.StatusCode != 200 {
+			t.Errorf("expecting status code of 200 but have %v", res.StatusCode)
+		}
+
+		bodyBytes, _ := ioutil.ReadAll(res.Body)
+		actualResult := expectedResult{}
+		if err := json.Unmarshal(bodyBytes, &actualResult); err != nil {
+			t.Errorf("failed to unmarshal test result %v", err)
+		}
+		if actualResult.Success != testCase.expectedResult.Success {
+			t.Errorf("expecting %v but have %v", testCase.expectedResult.Success, actualResult.Success)
+		}
+		if strings.Join(actualResult.Friends, ",") != strings.Join(testCase.expectedResult.Friends, ",") {
+			t.Errorf("expecting %v but have %v", testCase.expectedResult.Friends, actualResult.Friends)
+		}
+		if actualResult.Count != testCase.expectedResult.Count {
+			t.Errorf("expecting %v but have %v", testCase.expectedResult.Count, actualResult.Count)
+		}
+	}
+}
+
+func TestBlockUpdates(t *testing.T) {
+	resetDB()
+	// block not connected users
+	testSubscribeSamples := []map[string]interface{}{
+		{"json": userActions{Requestor: "andy@example.com", Target: "john@example.com"}, "expectedResult": true},
+		{"json": userActions{Requestor: "andy@example.com", Target: "john@example.com"}, "expectedResult": false},
+		{"json": userActions{Requestor: "andy@example.com"}, "expectedResult": false},
+		{"json": userActions{Target: "john@example.com"}, "expectedResult": false},
+		{"json": userActions{}, "expectedResult": false},
+	}
+
+	testCases := []testStruct{}
+	for _, testSubscribeSample := range testSubscribeSamples {
+		json, err := json.Marshal(testSubscribeSample["json"])
+		if err != nil {
+			t.Error(err)
+		}
+		testCases = append(testCases, testStruct{
+			stringRequestBody: string(json),
+			expectedResult: expectedResult{
+				Success: testSubscribeSample["expectedResult"].(bool),
+			},
+		})
+	}
+
+	for _, testCase := range testCases {
+		req, err := http.NewRequest("POST", baseAPI+"/friends/block", strings.NewReader(testCase.stringRequestBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if res.StatusCode != 200 {
+			t.Errorf("expecting status code of 200 but have %v", res.StatusCode)
+		}
+
+		bodyBytes, _ := ioutil.ReadAll(res.Body)
+		actualResult := expectedResult{}
+		if err := json.Unmarshal(bodyBytes, &actualResult); err != nil {
+			t.Errorf("failed to unmarshal test result %v", err)
+		}
+		if actualResult.Success != testCase.expectedResult.Success {
+			t.Errorf("expecting %v but have %v", testCase.expectedResult.Success, actualResult.Success)
+		}
+	}
+
+	// ensure new friends conenction cannot be made
+	// errors are skipped as they have been tested in the respecive tests
+	friends := url.Values{"friends": []string{`["andy@example.com", "john@example.com"]`}}.Encode()
+	req, err := http.NewRequest("POST", baseAPI+"/friends", strings.NewReader(friends))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	res, err := http.DefaultClient.Do(req)
+
+	bodyBytes, _ := ioutil.ReadAll(res.Body)
+	actualResult := expectedResult{}
+	if err := json.Unmarshal(bodyBytes, &actualResult); err != nil {
+		t.Errorf("failed to unmarshal test result %v", err)
+	}
+	if actualResult.Success != false {
+		t.Errorf("expecting %v but have %v", false, actualResult.Success)
+	}
+
+	// ensure blocked target cannot subscribe to block requestor
+	// errors are skipped as they have been tested in the respecive tests
+	users := userActions{Requestor: "andy@example.com", Target: "john@example.com"}
+	jsonUsers, err := json.Marshal(users)
+	req, err = http.NewRequest("POST", baseAPI+"/friends/subscribe", strings.NewReader(string(jsonUsers)))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	res, err = http.DefaultClient.Do(req)
+
+	bodyBytes, _ = ioutil.ReadAll(res.Body)
+	actualResult = expectedResult{}
+	if err := json.Unmarshal(bodyBytes, &actualResult); err != nil {
+		t.Errorf("failed to unmarshal test result %v", err)
+	}
+	if actualResult.Success != false {
+		t.Errorf("expecting %v but have %v", false, actualResult.Success)
+	}
+
+	// add new friends to test blocking connected users
+	// errors are skipped as they have been tested in the respective test
+	newFriends := url.Values{"friends": []string{`["sean@example.com", "lisa@example.com"]`}}.Encode()
+	req, err = http.NewRequest("POST", baseAPI+"/friends", strings.NewReader(newFriends))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	res, err = http.DefaultClient.Do(req)
+
+	// ensure new friends have been added successfully
+	// errors are skipped as they have been tested in the respective test
+	user := user{Email: "sean@example.com"}
+	jsonUser, _ := json.Marshal(user)
+	req, err = http.NewRequest("GET", baseAPI+"/friends", strings.NewReader(string(jsonUser)))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	res, err = http.DefaultClient.Do(req)
+
+	bodyBytes, _ = ioutil.ReadAll(res.Body)
+	actualResult = expectedResult{}
+	if err := json.Unmarshal(bodyBytes, &actualResult); err != nil {
+		t.Errorf("failed to unmarshal test result %v", err)
+	}
+	if actualResult.Success != true {
+		t.Errorf("expecting %v but have %v", true, actualResult.Success)
+	}
+	if strings.Join(actualResult.Friends, ",") != strings.Join([]string{"lisa@example.com"}, ",") {
+		t.Errorf("expecting %v but have %v", []string{"lisa@example.com"}, actualResult.Friends)
+	}
+	if actualResult.Count != 1 {
+		t.Errorf("expecting %v but have %v", 1, actualResult.Count)
+	}
+
+	// test block connected users
+	users = userActions{Requestor: "sean@example.com", Target: "lisa@example.com"}
+	jsonUsers, _ = json.Marshal(users)
+	req, err = http.NewRequest("POST", baseAPI+"/friends/block", strings.NewReader(string(jsonUsers)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	res, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if res.StatusCode != 200 {
+		t.Errorf("expecting status code of 200 but have %v", res.StatusCode)
+	}
+
+	bodyBytes, _ = ioutil.ReadAll(res.Body)
+	actualResult = expectedResult{}
+	if err := json.Unmarshal(bodyBytes, &actualResult); err != nil {
+		t.Errorf("failed to unmarshal test result %v", err)
+	}
+	if actualResult.Success != true {
+		t.Errorf("expecting %v but have %v %v", true, actualResult.Success, string(bodyBytes))
+	}
+
+	// ensure blocked target is no longer a friend of the block requestor
+	blockedUser := struct { // had to do it this way, go kept complaining user is not a type
+		Email string `json:"email"`
+	}{Email: "lisa@example.com"}
+	jsonUser, _ = json.Marshal(blockedUser)
+	req, err = http.NewRequest("GET", baseAPI+"/friends", strings.NewReader(string(jsonUser)))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	res, err = http.DefaultClient.Do(req)
+
+	bodyBytes, _ = ioutil.ReadAll(res.Body)
+	actualResult = expectedResult{}
+	if err := json.Unmarshal(bodyBytes, &actualResult); err != nil {
+		t.Errorf("failed to unmarshal test result %v", err)
+	}
+	if actualResult.Success != false {
+		t.Errorf("expecting %v but have %v", false, actualResult.Success)
+	}
+	if strings.Join(actualResult.Friends, ",") != strings.Join([]string{}, ",") {
+		t.Errorf("expecting %v but have %v", []string{}, actualResult.Friends)
+	}
+	if actualResult.Count != 0 {
+		t.Errorf("expecting %v but have %v", 0, actualResult.Count)
+	}
 }
 
 func resetDB() {

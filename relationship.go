@@ -218,6 +218,51 @@ func subscribeUpdates(requestor, target string) error {
 	return nil
 }
 
+func blockUpdates(requestor, target string) error {
+	users := []string{requestor, target}
+	exists, relationships, err := ifExistsRelationship(users)
+	if err != nil {
+		return err
+	}
+
+	if exists {
+		if isBlocked, message := isBlocked(relationships); isBlocked {
+			return errors.New(message)
+		}
+		if isFriend, _ := isFriend(relationships); isFriend {
+			return blockExistingRelationship(requestor, target)
+		}
+		if isSubscribed, _ := isSubscribed(relationships); isSubscribed {
+			return blockExistingRelationship(requestor, target)
+		}
+	}
+
+	blockQuery := `
+		INSERT INTO relationships (requestor, target, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5)
+	`
+	now := time.Now()
+	if _, err := db.Exec(blockQuery, requestor, target, relationshipIsBlocked, now, now); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func blockExistingRelationship(requestor, target string) error {
+	blockQuery := `
+		UPDATE relationships 
+		SET status = $1, updated_at = $2
+		WHERE requestor = $3 AND target = $4
+	`
+	now := time.Now()
+	if _, err := db.Exec(blockQuery, relationshipIsBlocked, now, requestor, target); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func ifExistsRelationship(users []string) (exists bool, relationships relationships, err error) {
 	statusQuery := `
 		SELECT requestor, target, status FROM relationships 
