@@ -59,12 +59,14 @@ func createFriends(users []string) error {
 		VALUES ($1, $2, $3, $4, $5)
 	`
 	now := time.Now()
-	if _, err := db.Exec(insertQuery, users[0], users[1], relationshipIsFriend, now, now); err != nil {
+	user1 := strings.ToLower(users[0])
+	user2 := strings.ToLower(users[1])
+	if _, err := db.Exec(insertQuery, user1, user2, relationshipIsFriend, now, now); err != nil {
 		return err
 	}
 
 	now = time.Now()
-	if _, err := db.Exec(insertQuery, users[1], users[0], relationshipIsFriend, now, now); err != nil {
+	if _, err := db.Exec(insertQuery, user2, user1, relationshipIsFriend, now, now); err != nil {
 		return err
 	}
 	return nil
@@ -83,7 +85,7 @@ func getFriendsList(user string) (friends []string, count int, err error) {
 		AND requestor_relationships.status=$2 AND target_relationships.status = $2
 	`
 
-	rows, err := db.Query(query, user, relationshipIsFriend)
+	rows, err := db.Query(query, strings.ToLower(user), relationshipIsFriend)
 	if err != nil {
 		err = errors.New(fmt.Sprintf("failed to check if user %v has any friends err %v", user, err))
 		return
@@ -161,7 +163,7 @@ func getCommonFriendsList(users []string) (friends []string, count int, err erro
 			d.requestor = $2
 	`
 
-	rows, err := db.Query(query, users[0], users[1], relationshipIsFriend)
+	rows, err := db.Query(query, strings.ToLower(users[0]), strings.ToLower(users[1]), relationshipIsFriend)
 	if err != nil {
 		err = errors.New(fmt.Sprintf("failed to check if user %v and user %v has any common friends err %v", users[0], users[1], err))
 		return
@@ -188,6 +190,8 @@ func getCommonFriendsList(users []string) (friends []string, count int, err erro
 }
 
 func subscribeUpdates(requestor, target string) error {
+	requestor = strings.ToLower(requestor)
+	target = strings.ToLower(target)
 	users := []string{requestor, target}
 	exists, relationships, err := ifExistsRelationship(users)
 	if err != nil {
@@ -219,6 +223,8 @@ func subscribeUpdates(requestor, target string) error {
 }
 
 func blockUpdates(requestor, target string) error {
+	requestor = strings.ToLower(requestor)
+	target = strings.ToLower(target)
 	users := []string{requestor, target}
 	exists, relationships, err := ifExistsRelationship(users)
 	if err != nil {
@@ -250,6 +256,8 @@ func blockUpdates(requestor, target string) error {
 }
 
 func blockExistingRelationship(requestor, target string) error {
+	requestor = strings.ToLower(requestor)
+	target = strings.ToLower(target)
 	blockQuery := `
 		UPDATE relationships 
 		SET status = $1, updated_at = $2
@@ -263,6 +271,62 @@ func blockExistingRelationship(requestor, target string) error {
 	return nil
 }
 
+func getSubscribedList(sender, text string) (subscribers []string, err error) {
+	sender = strings.ToLower(sender)
+	emailFilter := regexp.MustCompile(`\S*@\S*`)
+	mentionedUsers := emailFilter.FindAllString(text, -1)
+	for _, mentionedUser := range mentionedUsers {
+		mentionedUser = strings.ToLower(mentionedUser)
+		if strings.Contains(mentionedUser, ",") {
+			mentionedUser = strings.Replace(mentionedUser, ",", "", -1)
+		}
+		if isEmailValid(mentionedUser) {
+			subscribers = append(subscribers, mentionedUser)
+		}
+	}
+
+	subscriberQuery := `
+		/*
+			target_relationship.status may be null because subscription is not set two ways, unlike friendships
+			i.e. user A subscribe to user B will not result in user B subscribe to user A
+		*/
+
+		SELECT 
+			(CASE
+				WHEN target_relationship.status IS NOT NULL 
+					AND target_relationship.status <> $2 THEN requestor_relationships.requestor
+				WHEN requestor_relationships.status = $3 
+					AND target_relationship.status IS NULL THEN requestor_relationships.requestor
+			END) requestor 
+		FROM 
+			relationships requestor_relationships
+		LEFT JOIN 
+			relationships target_relationship ON target_relationship.requestor = requestor_relationships.target
+			AND target_relationship.target = requestor_relationships.requestor
+		WHERE 
+			requestor_relationships.target = $1 
+			AND (requestor_relationships.status = $3 OR requestor_relationships.status = $4)
+	`
+
+	rows, err := db.Query(subscriberQuery, sender, relationshipIsBlocked, relationshipIsSubscribed, relationshipIsFriend)
+	if err != nil {
+		err = errors.New(fmt.Sprintf("failed to check if sender %v has any subscribers err %v", sender, err))
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		row := relationship{}
+		err = rows.Scan(&row.Requestor)
+		if err != nil {
+			return
+		}
+		subscribers = append(subscribers, row.Requestor)
+	}
+
+	return
+}
+
 func ifExistsRelationship(users []string) (exists bool, relationships relationships, err error) {
 	statusQuery := `
 		SELECT requestor, target, status FROM relationships 
@@ -270,7 +334,7 @@ func ifExistsRelationship(users []string) (exists bool, relationships relationsh
 		OR (requestor=$2 AND target=$1)
 	`
 
-	rows, err := db.Query(statusQuery, users[0], users[1])
+	rows, err := db.Query(statusQuery, strings.ToLower(users[0]), strings.ToLower(users[1]))
 	if err != nil {
 		err = errors.New(fmt.Sprintf("failed to check if any relationships exists between the users %v", err))
 		return
