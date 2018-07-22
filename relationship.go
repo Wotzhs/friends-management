@@ -106,6 +106,84 @@ func getFriendsList(user string) (friends []string, count int, err error) {
 	return
 }
 
+func getCommonFriendsList(users []string) (friends []string, count int, err error) {
+	if len(users) != 2 {
+		err = errors.New("incorrect number of friends")
+		return
+	}
+	for _, user := range users {
+		if !isEmailValid(user) {
+			err = errors.New("invalid user")
+			return
+		}
+	}
+
+	exists, relationships, err := ifExistsRelationship(users)
+	if err != nil {
+		return
+	}
+
+	if exists {
+		if isBlocked, message := isBlocked(relationships); isBlocked {
+			err = errors.New(message)
+			return
+		}
+	}
+
+	query := `
+		/* 
+			a = requestors_relationship (user 1 and user 2 relationship)
+			b = requestors_target_relationship (user 2 and user 1 relationship)
+			c = common_relationship (user 2 and user 3 relationship)
+			d = common_requestor_relationship (user 3 and user 1 relationship)
+
+			these requires all related parties to have status of "friend", "blocked" or "subscribed" will not match
+			table alias names are intentionally kept short to maintain readability
+		*/
+		
+		SELECT d.target
+		FROM 
+			relationships a
+		INNER JOIN 
+			(SELECT requestor, target FROM relationships WHERE requestor = $1) b ON a.target = b.requestor 
+			AND a.requestor = b.target
+		INNER JOIN 
+			relationships c ON c.requestor = b.target
+			AND c.status = $3
+		INNER JOIN 
+			relationships d ON d.requestor = c.target 
+			AND d.target = a.requestor 
+			AND d.status = $3
+		WHERE 
+			d.requestor = $2
+	`
+
+	rows, err := db.Query(query, users[0], users[1], relationshipIsFriend)
+	if err != nil {
+		err = errors.New(fmt.Sprintf("failed to check if user %v and user %v has any common friends err %v", users[0], users[1], err))
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		row := relationship{}
+		err = rows.Scan(&row.target)
+		if err != nil {
+			return
+		}
+		friends = append(friends, row.target)
+	}
+
+	count = len(friends)
+
+	if count == 0 {
+		err = errors.New("users doesn't have any common friends")
+		return
+	}
+
+	return
+}
+
 func ifExistsRelationship(users []string) (exists bool, relationships relationships, err error) {
 	statusQuery := `
 		SELECT requestor, target, status FROM relationships 
