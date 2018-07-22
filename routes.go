@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
+	"strings"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -23,6 +24,7 @@ func init() {
 	router.POST("/api/friends", createFriendsHandler)
 	router.GET("/api/friends", getFriendsListHandler)
 	router.GET("/api/friends/common", getCommonFriendsListHandler)
+	router.POST("/api/friends/subscribe", subscribeUpdatesHandler)
 }
 
 func createFriendsHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -106,5 +108,38 @@ func getCommonFriendsListHandler(w http.ResponseWriter, r *http.Request, _ httpr
 	}
 
 	jsonRes, _ = json.Marshal(&apiResponse{Success: true, Errors: "", Friends: friendsList, Count: count})
+	w.Write(jsonRes)
+}
+
+func subscribeUpdatesHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	bodyBytes, _ := ioutil.ReadAll(r.Body)
+
+	users := relationship{}
+	if err := json.Unmarshal(bodyBytes, &users); err != nil {
+		jsonRes, _ = json.Marshal(&apiResponse{Success: false, Errors: err.Error()})
+		w.Write(jsonRes)
+		return
+	}
+
+	errors := []string{}
+	if users.Requestor == "" {
+		errors = append(errors, "no requestor was provided")
+	}
+	if users.Target == "" {
+		errors = append(errors, "no target was provided")
+	}
+	if len(errors) > 0 {
+		jsonRes, _ = json.Marshal(&apiResponse{Success: false, Errors: strings.Join(errors, ",")})
+		w.Write(jsonRes)
+		return
+	}
+
+	if err := subscribeUpdates(users.Requestor, users.Target); err != nil {
+		jsonRes, _ = json.Marshal(&apiResponse{Success: false, Errors: err.Error()})
+		w.Write(jsonRes)
+		return
+	}
+
+	jsonRes, _ = json.Marshal(&apiResponse{Success: true})
 	w.Write(jsonRes)
 }

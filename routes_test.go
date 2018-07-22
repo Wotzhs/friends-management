@@ -23,6 +23,11 @@ type user struct {
 	Email string `json:"email"`
 }
 
+type userActions struct {
+	Requestor string `json:"requestor"`
+	Target    string `json:"target"`
+}
+
 type expectedResult struct {
 	Success bool     `json:"success"`
 	Friends []string `json:"friends"`
@@ -345,6 +350,56 @@ func TestGetCommonFriendsList(t *testing.T) {
 			t.Errorf("expecting %v but have %v", testCase.expectedResult.Count, actualResult.Count)
 		}
 	}
+}
+
+func TestSubScribeUpdates(t *testing.T) {
+	resetDB()
+	testSubscribeSamples := []map[string]interface{}{
+		{"json": userActions{Requestor: "lisa@example.com", Target: "john@example.com"}, "expectedResult": true},
+		{"json": userActions{Requestor: "lisa@example.com", Target: "john@example.com"}, "expectedResult": false},
+		{"json": userActions{Requestor: "lisa@example.com"}, "expectedResult": false},
+		{"json": userActions{Target: "john@example.com"}, "expectedResult": false},
+		{"json": userActions{}, "expectedResult": false},
+	}
+	testCases := []testStruct{}
+	for _, testSubscribeSample := range testSubscribeSamples {
+		json, err := json.Marshal(testSubscribeSample["json"])
+		if err != nil {
+			t.Error(err)
+		}
+		testCases = append(testCases, testStruct{
+			stringRequestBody: string(json),
+			expectedResult: expectedResult{
+				Success: testSubscribeSample["expectedResult"].(bool),
+			},
+		})
+	}
+
+	for _, testCase := range testCases {
+		req, err := http.NewRequest("POST", baseAPI+"/friends/subscribe", strings.NewReader(testCase.stringRequestBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if res.StatusCode != 200 {
+			t.Errorf("expecting status code of 200 but have %v", res.StatusCode)
+		}
+
+		bodyBytes, _ := ioutil.ReadAll(res.Body)
+		actualResult := expectedResult{}
+		if err := json.Unmarshal(bodyBytes, &actualResult); err != nil {
+			t.Errorf("failed to unmarshal test result %v", err)
+		}
+		if actualResult.Success != testCase.expectedResult.Success {
+			t.Errorf("expecting %v but have %v", testCase.expectedResult.Success, actualResult.Success)
+		}
+	}
+
 }
 
 func resetDB() {
