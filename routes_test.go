@@ -26,12 +26,15 @@ type user struct {
 type userActions struct {
 	Requestor string `json:"requestor"`
 	Target    string `json:"target"`
+	Sender    string `json:"sender"`
+	Text      string `json:"text"`
 }
 
 type expectedResult struct {
-	Success bool     `json:"success"`
-	Friends []string `json:"friends"`
-	Count   int      `json:"count"`
+	Success    bool     `json:"success"`
+	Friends    []string `json:"friends"`
+	Count      int      `json:"count"`
+	Recipients []string `json:"recipients"`
 }
 
 type testStruct struct {
@@ -617,6 +620,116 @@ func TestBlockUpdates(t *testing.T) {
 	}
 	if actualResult.Count != 0 {
 		t.Errorf("expecting %v but have %v", 0, actualResult.Count)
+	}
+}
+
+func TestGetSubscribersList(t *testing.T) {
+	resetDB()
+	// add connections & subscribers
+	// err and result checks are omitted intentionally
+	newFriends := []url.Values{
+		{"friends": []string{`["andy@example.com", "john@example.com"]`}},
+		{"friends": []string{`["lisa@example.com", "john@example.com"]`}},
+	}
+	for _, newFriend := range newFriends {
+		req, _ := http.NewRequest("POST", baseAPI+"/friends", strings.NewReader(newFriend.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		http.DefaultClient.Do(req)
+	}
+
+	newSubscriber := userActions{Requestor: "sean@example.com", Target: "john@example.com"}
+	jsonSubscriber, _ := json.Marshal(newSubscriber)
+	req, _ := http.NewRequest("POST", baseAPI+"/friends/subscribe", strings.NewReader(string(jsonSubscriber)))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	http.DefaultClient.Do(req)
+
+	testSamples := []map[string]interface{}{
+		{ // with valid data
+			"test":       userActions{Sender: "john@example.com", Text: "Hello World! kate@example.com"},
+			"success":    true,
+			"recipients": []string{"andy@example.com", "lisa@example.com", "sean@example.com", "kate@example.com"},
+		},
+		{ // with empty message
+			"test":       userActions{Sender: "john@example.com"},
+			"success":    true,
+			"recipients": []string{"andy@example.com", "lisa@example.com", "sean@example.com"},
+		},
+		{ // with message without mentions
+			"test":       userActions{Sender: "john@example.com", Text: "Hello World!"},
+			"success":    true,
+			"recipients": []string{"andy@example.com", "lisa@example.com", "sean@example.com"},
+		},
+		{ // with multiple mentions in message
+			"test":       userActions{Sender: "john@example.com", Text: "Hello World! kate@example.com, cathy@example.com and someone@example.com"},
+			"success":    true,
+			"recipients": []string{"andy@example.com", "lisa@example.com", "sean@example.com", "kate@example.com", "cathy@example.com", "someone@example.com"},
+		},
+		{ // with invalid mention in message
+			"test":       userActions{Sender: "john@example.com", Text: "Hello World! kate@exam@ple.com"},
+			"success":    true,
+			"recipients": []string{"andy@example.com", "lisa@example.com", "sean@example.com"},
+		},
+		{ // without subscriber but valid mention in message
+			"test":       userActions{Sender: "someone@example.com", Text: "Hello World! kate@example.com"},
+			"success":    true,
+			"recipients": []string{"kate@example.com"},
+		},
+		{ // without sender
+			"test":       userActions{Text: "Hello World! kate@example.com"},
+			"success":    false,
+			"recipients": []string{},
+		},
+		{ // blank
+			"test":       userActions{},
+			"success":    false,
+			"recipients": []string{},
+		},
+	}
+
+	testCases := []testStruct{}
+	for _, testSample := range testSamples {
+		jsonTest, err := json.Marshal(testSample["test"])
+		if err != nil {
+			t.Error(err)
+		}
+		testCases = append(testCases, testStruct{
+			stringRequestBody: string(jsonTest),
+			expectedResult: expectedResult{
+				Success:    testSample["success"].(bool),
+				Recipients: testSample["recipients"].([]string),
+			},
+		})
+	}
+
+	for _, testCase := range testCases {
+		req, err := http.NewRequest("GET", baseAPI+"/friends/subscribe", strings.NewReader(testCase.stringRequestBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if res.StatusCode != 200 {
+			t.Errorf("expecting status code of 200 but have %v", res.StatusCode)
+		}
+
+		bodyBytes, _ := ioutil.ReadAll(res.Body)
+		actualResult := expectedResult{}
+		if err := json.Unmarshal(bodyBytes, &actualResult); err != nil {
+			t.Errorf("failed to unmarshal test result %v", err)
+		}
+		if actualResult.Success != testCase.expectedResult.Success {
+			t.Errorf("expecting %v but have %v", testCase.expectedResult.Success, actualResult.Success)
+		}
+
+		sort.Strings(actualResult.Recipients)
+		sort.Strings(testCase.expectedResult.Recipients)
+		if strings.Join(actualResult.Recipients, ",") != strings.Join(testCase.expectedResult.Recipients, ",") {
+			t.Errorf("expecting %v but have %v", testCase.expectedResult.Recipients, actualResult.Recipients)
+		}
 	}
 }
 

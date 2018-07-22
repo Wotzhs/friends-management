@@ -13,10 +13,11 @@ var router *httprouter.Router
 var jsonRes []byte
 
 type apiResponse struct {
-	Success bool     `json:"success"`
-	Errors  string   `json:"errors,omitempty"`
-	Friends []string `json:"friends,omitempty"`
-	Count   int      `json:"count,omitempty"`
+	Success    bool     `json:"success"`
+	Errors     string   `json:"errors,omitempty"`
+	Friends    []string `json:"friends,omitempty"`
+	Count      int      `json:"count,omitempty"`
+	Recipients []string `json:"recipients,omitempty"`
 }
 
 func init() {
@@ -26,6 +27,7 @@ func init() {
 	router.GET("/api/friends/common", getCommonFriendsListHandler)
 	router.POST("/api/friends/subscribe", subscribeUpdatesHandler)
 	router.POST("/api/friends/block", blockUpdatesHandler)
+	router.GET("/api/friends/subscribe", getSubscribedListHandler)
 }
 
 func createFriendsHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -175,5 +177,34 @@ func blockUpdatesHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Pa
 	}
 
 	jsonRes, _ = json.Marshal(&apiResponse{Success: true})
+	w.Write(jsonRes)
+}
+
+func getSubscribedListHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	bodyBytes, _ := ioutil.ReadAll(r.Body)
+	message := struct {
+		Sender string
+		Text   string
+	}{}
+	if err := json.Unmarshal(bodyBytes, &message); err != nil {
+		jsonRes, _ = json.Marshal(&apiResponse{Success: false, Errors: err.Error()})
+		w.Write(jsonRes)
+		return
+	}
+
+	if message.Sender == "" {
+		jsonRes, _ = json.Marshal(&apiResponse{Success: false, Errors: "invalid data"})
+		w.Write(jsonRes)
+		return
+	}
+
+	recipients, err := getSubscribedList(message.Sender, message.Text)
+	if err != nil {
+		jsonRes, _ = json.Marshal(&apiResponse{Success: false, Recipients: recipients, Errors: err.Error()})
+		w.Write(jsonRes)
+		return
+	}
+
+	jsonRes, _ = json.Marshal(&apiResponse{Success: true, Recipients: recipients})
 	w.Write(jsonRes)
 }
