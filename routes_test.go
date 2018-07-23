@@ -19,6 +19,19 @@ var (
 	baseAPI = "http://localhost:3000/api"
 )
 
+type testStruct struct {
+	arrayRequestBody  url.Values
+	stringRequestBody string
+	expectedResult
+}
+
+type expectedResult struct {
+	Success    bool     `json:"success"`
+	Friends    []string `json:"friends"`
+	Count      int      `json:"count"`
+	Recipients []string `json:"recipients"`
+}
+
 type user struct {
 	Email string `json:"email"`
 }
@@ -30,19 +43,6 @@ type userActions struct {
 	Text      string `json:"text"`
 }
 
-type expectedResult struct {
-	Success    bool     `json:"success"`
-	Friends    []string `json:"friends"`
-	Count      int      `json:"count"`
-	Recipients []string `json:"recipients"`
-}
-
-type testStruct struct {
-	arrayRequestBody  url.Values
-	stringRequestBody string
-	expectedResult
-}
-
 func init() {
 	if os.Getenv("GO_ENV") == "test" {
 		baseAPI = "http://localhost:3001/api"
@@ -51,32 +51,46 @@ func init() {
 
 func TestCreateFriends(t *testing.T) {
 	resetDB()
-	testCases := []testStruct{
+	testSamples := []map[string]interface{}{
 		{
-			arrayRequestBody: url.Values{"friends": []string{`["andy@example.com", "john@example.com"]`}},
-			expectedResult:   expectedResult{Success: true},
+			"friends": []string{"andy@example.com", "john@example.com"},
+			"success": true,
 		},
 		{ // duplicate request
-			arrayRequestBody: url.Values{"friends": []string{`["andy@example.com", "john@example.com"]`}},
-			expectedResult:   expectedResult{Success: false},
+			"friends": []string{"andy@example.com", "john@example.com"},
+			"success": false,
 		},
 		{ // same user
-			arrayRequestBody: url.Values{"friends": []string{`["andy@example.com", "andy@example.com"]`}},
-			expectedResult:   expectedResult{Success: false},
+			"friends": []string{"andy@example.com", "andy@example.com"},
+			"success": false,
 		},
 		{ // insufficient user
-			arrayRequestBody: url.Values{"friends": []string{`["andy@example.com"]`}},
-			expectedResult:   expectedResult{Success: false},
+			"friends": []string{"andy@example.com"},
+			"success": false,
 		},
 		{ // invalid user format
-			arrayRequestBody: url.Values{"friends": []string{`["andy", "john"]`}},
-			expectedResult:   expectedResult{Success: false},
+			"friends": []string{"andy", "john"},
+			"success": false,
 		},
 	}
 
+	testCases := []testStruct{}
+	for _, testSample := range testSamples {
+		friends := expectedResult{Friends: testSample["friends"].([]string)}
+		jsonTestUser, err := json.Marshal(friends)
+		if err != nil {
+			t.Error(err)
+		}
+		testCases = append(testCases, testStruct{
+			stringRequestBody: string(jsonTestUser),
+			expectedResult: expectedResult{
+				Success: testSample["success"].(bool),
+			},
+		})
+	}
+
 	for _, testCase := range testCases {
-		reqBody := testCase.arrayRequestBody.Encode()
-		req, err := http.NewRequest("POST", baseAPI+"/friends", strings.NewReader(reqBody))
+		req, err := http.NewRequest("POST", baseAPI+"/friends", strings.NewReader(testCase.stringRequestBody))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -104,15 +118,15 @@ func TestCreateFriends(t *testing.T) {
 func TestGetFriendsList(t *testing.T) {
 	resetDB()
 	// add friends
-	addFriends := []url.Values{
-		url.Values{"friends": []string{`["andy@example.com", "john@example.com"]`}},
-		url.Values{"friends": []string{`["andy@example.com", "lisa@example.com"]`}},
-		url.Values{"friends": []string{`["john@example.com", "kate@example.com"]`}},
+	addFriends := []map[string]interface{}{
+		{"friends": []string{"andy@example.com", "john@example.com"}},
+		{"friends": []string{"andy@example.com", "lisa@example.com"}},
+		{"friends": []string{"john@example.com", "kate@example.com"}},
 	}
 	for _, addFriend := range addFriends {
 		// errors are not checked as these are tested in TestCreateFriends test
-		reqBody := addFriend.Encode()
-		req, _ := http.NewRequest("POST", baseAPI+"/friends", strings.NewReader(reqBody))
+		json, _ := json.Marshal(expectedResult{Friends: addFriend["friends"].([]string)})
+		req, _ := http.NewRequest("POST", baseAPI+"/friends", strings.NewReader(string(json)))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		http.DefaultClient.Do(req)
 	}
@@ -177,20 +191,20 @@ func TestGetFriendsList(t *testing.T) {
 func TestGetCommonFriendsList(t *testing.T) {
 	resetDB()
 	// add friends
-	addFriends := []url.Values{
-		url.Values{"friends": []string{`["andy@example.com", "john@example.com"]`}},
-		url.Values{"friends": []string{`["andy@example.com", "common@example.com"]`}},
-		url.Values{"friends": []string{`["andy@example.com", "lisa@example.com"]`}},
-		url.Values{"friends": []string{`["andy@example.com", "sean@example.com"]`}},
-		url.Values{"friends": []string{`["john@example.com", "andy@example.com"]`}},
-		url.Values{"friends": []string{`["john@example.com", "common@example.com"]`}},
-		url.Values{"friends": []string{`["john@example.com", "lisa@example.com"]`}},
-		url.Values{"friends": []string{`["lisa@example.com", "sean@example.com"]`}},
+	addFriends := []map[string]interface{}{
+		{"friends": []string{"andy@example.com", "john@example.com"}},
+		{"friends": []string{"andy@example.com", "common@example.com"}},
+		{"friends": []string{"andy@example.com", "lisa@example.com"}},
+		{"friends": []string{"andy@example.com", "sean@example.com"}},
+		{"friends": []string{"john@example.com", "andy@example.com"}},
+		{"friends": []string{"john@example.com", "common@example.com"}},
+		{"friends": []string{"john@example.com", "lisa@example.com"}},
+		{"friends": []string{"lisa@example.com", "sean@example.com"}},
 	}
 	for _, addFriend := range addFriends {
 		// errors are not checked as these are tested in TestCreateFriends test
-		reqBody := addFriend.Encode()
-		req, _ := http.NewRequest("POST", baseAPI+"/friends", strings.NewReader(reqBody))
+		json, _ := json.Marshal(expectedResult{Friends: addFriend["friends"].([]string)})
+		req, _ := http.NewRequest("POST", baseAPI+"/friends", strings.NewReader(string(json)))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		http.DefaultClient.Do(req)
 	}
@@ -347,7 +361,7 @@ func TestGetCommonFriendsList(t *testing.T) {
 		sort.Strings(actualResult.Friends)
 		sort.Strings(testCase.expectedResult.Friends)
 		if strings.Join(actualResult.Friends, ",") != strings.Join(testCase.expectedResult.Friends, ",") {
-			t.Errorf("expecting %v but have %v %v", testCase.expectedResult.Friends, actualResult.Friends, string(bodyBytes))
+			t.Errorf("expecting %v but have %v", testCase.expectedResult.Friends, actualResult.Friends)
 		}
 		if actualResult.Count != testCase.expectedResult.Count {
 			t.Errorf("expecting %v but have %v", testCase.expectedResult.Count, actualResult.Count)
@@ -511,10 +525,10 @@ func TestBlockUpdates(t *testing.T) {
 
 	// ensure new friends conenction cannot be made
 	// errors are skipped as they have been tested in the respecive tests
-	friends := url.Values{"friends": []string{`["andy@example.com", "john@example.com"]`}}.Encode()
-	req, err := http.NewRequest("POST", baseAPI+"/friends", strings.NewReader(friends))
+	jsonUsers, _ := json.Marshal(expectedResult{Friends: []string{"andy@example.com", "john@example.com"}})
+	req, _ := http.NewRequest("POST", baseAPI+"/friends", strings.NewReader(string(jsonUsers)))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	res, err := http.DefaultClient.Do(req)
+	res, _ := http.DefaultClient.Do(req)
 
 	bodyBytes, _ := ioutil.ReadAll(res.Body)
 	actualResult := expectedResult{}
@@ -527,11 +541,10 @@ func TestBlockUpdates(t *testing.T) {
 
 	// ensure blocked target cannot subscribe to block requestor
 	// errors are skipped as they have been tested in the respecive tests
-	users := userActions{Requestor: "andy@example.com", Target: "john@example.com"}
-	jsonUsers, err := json.Marshal(users)
-	req, err = http.NewRequest("POST", baseAPI+"/friends/subscribe", strings.NewReader(string(jsonUsers)))
+	jsonUsers, _ = json.Marshal(userActions{Requestor: "andy@example.com", Target: "john@example.com"})
+	req, _ = http.NewRequest("POST", baseAPI+"/friends/subscribe", strings.NewReader(string(jsonUsers)))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	res, err = http.DefaultClient.Do(req)
+	res, _ = http.DefaultClient.Do(req)
 
 	bodyBytes, _ = ioutil.ReadAll(res.Body)
 	actualResult = expectedResult{}
@@ -544,18 +557,17 @@ func TestBlockUpdates(t *testing.T) {
 
 	// add new friends to test blocking connected users
 	// errors are skipped as they have been tested in the respective test
-	newFriends := url.Values{"friends": []string{`["sean@example.com", "lisa@example.com"]`}}.Encode()
-	req, err = http.NewRequest("POST", baseAPI+"/friends", strings.NewReader(newFriends))
+	jsonUsers, _ = json.Marshal(expectedResult{Friends: []string{"sean@example.com", "lisa@example.com"}})
+	req, _ = http.NewRequest("POST", baseAPI+"/friends", strings.NewReader(string(jsonUsers)))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	res, err = http.DefaultClient.Do(req)
+	res, _ = http.DefaultClient.Do(req)
 
 	// ensure new friends have been added successfully
 	// errors are skipped as they have been tested in the respective test
-	user := user{Email: "sean@example.com"}
-	jsonUser, _ := json.Marshal(user)
-	req, err = http.NewRequest("GET", baseAPI+"/friends", strings.NewReader(string(jsonUser)))
+	jsonUser, _ := json.Marshal(user{Email: "sean@example.com"})
+	req, _ = http.NewRequest("GET", baseAPI+"/friends", strings.NewReader(string(jsonUser)))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	res, err = http.DefaultClient.Do(req)
+	res, _ = http.DefaultClient.Do(req)
 
 	bodyBytes, _ = ioutil.ReadAll(res.Body)
 	actualResult = expectedResult{}
@@ -573,9 +585,8 @@ func TestBlockUpdates(t *testing.T) {
 	}
 
 	// test block connected users
-	users = userActions{Requestor: "sean@example.com", Target: "lisa@example.com"}
-	jsonUsers, _ = json.Marshal(users)
-	req, err = http.NewRequest("POST", baseAPI+"/friends/block", strings.NewReader(string(jsonUsers)))
+	jsonUsers, _ = json.Marshal(userActions{Requestor: "sean@example.com", Target: "lisa@example.com"})
+	req, err := http.NewRequest("POST", baseAPI+"/friends/block", strings.NewReader(string(jsonUsers)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -599,10 +610,7 @@ func TestBlockUpdates(t *testing.T) {
 	}
 
 	// ensure blocked target is no longer a friend of the block requestor
-	blockedUser := struct { // had to do it this way, go kept complaining user is not a type
-		Email string `json:"email"`
-	}{Email: "lisa@example.com"}
-	jsonUser, _ = json.Marshal(blockedUser)
+	jsonUser, _ = json.Marshal(user{Email: "lisa@example.com"})
 	req, err = http.NewRequest("GET", baseAPI+"/friends", strings.NewReader(string(jsonUser)))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	res, err = http.DefaultClient.Do(req)
@@ -627,12 +635,13 @@ func TestGetSubscribersList(t *testing.T) {
 	resetDB()
 	// add connections & subscribers
 	// err and result checks are omitted intentionally
-	newFriends := []url.Values{
-		{"friends": []string{`["andy@example.com", "john@example.com"]`}},
-		{"friends": []string{`["lisa@example.com", "john@example.com"]`}},
+	newFriends := []map[string]interface{}{
+		{"friends": []string{"andy@example.com", "john@example.com"}},
+		{"friends": []string{"lisa@example.com", "john@example.com"}},
 	}
 	for _, newFriend := range newFriends {
-		req, _ := http.NewRequest("POST", baseAPI+"/friends", strings.NewReader(newFriend.Encode()))
+		json, _ := json.Marshal(expectedResult{Friends: newFriend["friends"].([]string)})
+		req, _ := http.NewRequest("POST", baseAPI+"/friends", strings.NewReader(string(json)))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		http.DefaultClient.Do(req)
 	}
